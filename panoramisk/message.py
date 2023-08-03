@@ -1,5 +1,6 @@
+from urllib.parse import unquote, unquote_plus
+
 from . import utils
-from urllib.parse import unquote
 
 
 class Message(utils.CaseInsensitiveDict):
@@ -36,25 +37,25 @@ class Message(utils.CaseInsensitiveDict):
 
     """
 
-    quoted_keys = ['result']
-    success_responses = ['Success', 'Follows', 'Goodbye']
+    quoted_keys = ["result"]
+    success_responses = ["Success", "Follows", "Goodbye"]
 
-    def __init__(self, headers, content=''):
+    def __init__(self, headers, content=""):
         super(Message, self).__init__(headers, content=content)
         self.manager = None
 
     @property
     def id(self):
-        if 'commandid' in self:
-            return self['commandid']
-        elif 'actionid' in self:
-            return self['actionid']
+        if "commandid" in self:
+            return self["commandid"]
+        elif "actionid" in self:
+            return self["actionid"]
         return None
 
     @property
     def action_id(self):
-        if 'actionid' in self:
-            return self['actionid']
+        if "actionid" in self:
+            return self["actionid"]
         return None
 
     @property
@@ -70,27 +71,27 @@ class Message(utils.CaseInsensitiveDict):
             >>> resp.success
             False
         """
-        if 'event' in self:
+        if "event" in self:
             return True
         if self.response in self.success_responses:
             return True
         return False
 
     def __repr__(self):
-        message = ' '.join(['%s=%r' % i for i in sorted(self.items())])
-        return '<Message {0}>'.format(message)
+        message = " ".join(["%s=%r" % i for i in sorted(self.items())])
+        return "<Message {0}>".format(message)
 
     def iter_lines(self):
         """Iter over response body"""
-        for line in self.content.split('\n'):
+        for line in self.content.split("\n"):
             yield line
 
     def parsed_result(self):
         """Get parsed result of AGI command"""
-        if 'Result' in self:
-            return utils.parse_agi_result(self['Result'])
+        if "Result" in self:
+            return utils.parse_agi_result(self["Result"])
         else:
-            raise ValueError('No result in %r' % self)
+            raise ValueError("No result in %r" % self)
 
     def getdict(self, key):
         """Convert a multi values header to a case-insensitive dict:
@@ -113,7 +114,7 @@ class Message(utils.CaseInsensitiveDict):
             raise TypeError("{0} must be a list. got {1}".format(key, values))
         result = utils.CaseInsensitiveDict()
         for item in values:
-            k, v = item.split('=', 1)
+            k, v = item.split("=", 1)
             result[k] = v
         return result
 
@@ -121,15 +122,23 @@ class Message(utils.CaseInsensitiveDict):
     def from_line(cls, line):
         mlines = line.split(utils.EOL)
         headers = {}
-        content = ''
-        has_body = ('Response: Follows', 'Response: Fail')
+        content = ""
+        has_body = ("Response: Follows", "Response: Fail", "Event: ReceivedSMS")
         if mlines[0].startswith(has_body):
-            content = mlines.pop()
+            if mlines[0] == "Event: ReceivedSMS":
+                mlines.pop()
+                content = mlines.pop()
+                _, content = content.split(": ", 1)
+                content = unquote_plus(content)
+                if content.startswith("\ufeff"):
+                    content = content[1:]
+            else:
+                content = mlines.pop()
             while not content and mlines:
                 content = mlines.pop()
         for mline in mlines:
-            if ': ' in mline:
-                k, v = mline.split(': ', 1)
+            if ": " in mline:
+                k, v = mline.split(": ", 1)
                 if k.lower() in cls.quoted_keys:
                     v = unquote(v).strip()
                 if k in headers:
@@ -140,5 +149,5 @@ class Message(utils.CaseInsensitiveDict):
                     headers[k] = o
                 else:
                     headers[k] = v
-        if 'Event' in headers or 'Response' in headers:
+        if "Event" in headers or "Response" in headers:
             return cls(headers, content)
